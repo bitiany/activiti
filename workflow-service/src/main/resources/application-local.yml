@@ -1,0 +1,55 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+spring:
+  application:
+    name: rental-workflow
+  # 数据源
+  datasource:
+    url: jdbc:mysql://localhost:3306/rental-workflow?useUnicode=true&characterEncoding=utf-8&useSSL=false
+    username: root
+    password: Pass^w0rd_mysql
+    type: com.alibaba.druid.pool.DruidDataSource
+    driverClassName: com.mysql.jdbc.Driver
+    logSlowSql: true
+    # Druid StatViewServlet配置
+    druid:
+      stat-view-servlet:
+        # 默认true 内置监控页面首页/druid/index.html
+        enabled: true
+        url-pattern: /druid/*
+        # 允许清空统计数据
+        reset-enable: true
+        login-username: root
+        login-password: 123456
+        # IP白名单 多个逗号分隔
+        allow:
+        # IP黑名单
+        deny:
+      filter:
+        stat:
+          # 开启监控sql
+          enabled: true
+          # 显示并标注慢sql 默认当超过3秒显示
+          log-slow-sql: true
+          slow-sql-millis: 3000
+          merge-sql: true
+        # 防SQL注入过滤
+        wall:
+          config:
+            # 允许多条sql同时执行
+            multi-statement-allow: true
+  # 工作流
+  activiti:
+    check-process-definitions: false
+    db-identity-used: false
+    process-definition-location-prefix: classpath:/processes/
+    # 自动生成Activiti相关表 第一次生成后建议关闭提高运行速度
+    database-schema-update: true
+    history-level: full
+    # 扩展配置
+    base:
+      # 流程图字体 默认宋体
+      activityFontName: Microsoft YaHei
+      labelFontName: Microsoft YaHei

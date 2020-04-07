@@ -1,0 +1,16 @@
+---
+spring:
+  datasource:
+    druid:
+      name: rental_payment
+      url: jdbc:mysql://localhost:3306/rental-workflow?useUnicode=true&characterEncoding=utf-8&useSSL=false
+      username: root
+      password: Pass^w0rd_mysql
+      driver-class-name: com.mysql.jdbc.Driver
+      initial-size: 10
+      max-active: 300
+      validationQuery: select 'x'
+      testOnBorrow: true
+      testWhileIdle: true
+      filters: stat,wall
+      db-type: mysql
