@@ -97,13 +97,10 @@ public class ActivitiController {
     @RequestMapping(value = "/deploy/{id}", method = RequestMethod.GET)
     @ApiOperation(value = "部署发布模型")
     public String deploy(@PathVariable String id) {
-
         // 获取模型
         Model modelData = repositoryService.getModel(id);
         byte[] bytes = repositoryService.getModelEditorSource(modelData.getId());
-
         if (bytes == null) {
-//            return ResultUtil.error("模型数据为空，请先成功设计流程并保存");
         }
 
         try {
@@ -111,7 +108,6 @@ public class ActivitiController {
 
             BpmnModel model = new BpmnJsonConverter().convertToBpmnModel(modelNode);
             if(model.getProcesses().size()==0){
-//                return ResultUtil.error("模型不符要求，请至少设计一条主线流程");
             }
             byte[] bpmnBytes = new BpmnXMLConverter().convertToXML(model);
 
@@ -124,55 +120,34 @@ public class ActivitiController {
 
             // 设置流程分类 保存扩展流程至数据库
             List<ProcessDefinition> list = repositoryService.createProcessDefinitionQuery().deploymentId(deployment.getId()).list();
-            System.out.println(list);
             if(CollectionUtils.isNotEmpty(list)){
                 return list.stream().findFirst().get().getId();
             }
-//            ActModel actModel = actModelService.get(id);
-//            for (ProcessDefinition pd : list) {
-//                ActProcess actProcess = new ActProcess();
-//                actProcess.setId(pd.getId());
-//                actProcess.setName(modelData.getName());
-//                actProcess.setProcessKey(modelData.getKey());
-//                actProcess.setDeploymentId(deployment.getId());
-//                actProcess.setDescription(actModel.getDescription());
-//                actProcess.setVersion(pd.getVersion());
-//                actProcess.setXmlName(pd.getResourceName());
-//                actProcess.setDiagramName(pd.getDiagramResourceName());
-//                actProcessService.setAllOldByProcessKey(modelData.getKey());
-//                actProcess.setLatest(true);
-//                actProcessService.save(actProcess);
-//            }
         }catch (Exception e){
             e.printStackTrace();
-//            return ResultUtil.error("部署失败");
         }
-
         return "success";
     }
 
     @RequestMapping("start/{pid}")
-    public String apply(@PathVariable("pid") String id){
-
-//        ActBusiness actBusiness = actBusinessService.get(act.getId());
-//        if(actBusiness==null){
-//            return ResultUtil.error("actBusiness表中该id不存在");
-//        }
-//        act.setTableId(actBusiness.getTableId());
-//        // 根据你的业务需求放入相应流程所需变量
-//        act = putParams(act);
-        String userId = "123";
+    @ResponseBody
+    public String apply(@PathVariable("pid") String id, @RequestParam(name = "assigner", required = true) String assigner, HttpServletRequest request){
         // 启动流程用户
-        identityService.setAuthenticatedUserId(userId);
+        identityService.setAuthenticatedUserId(assigner);
         // 启动流程 需传入业务表id变量
-//        actBusiness.getParams().put("tableId", actBusiness.getTableId());
-        Map map = new HashMap();
-        map.put("days", 3);
-        ProcessInstance pi = runtimeService.startProcessInstanceById(id, "123", map);
+        Map paramMap = new HashMap();
+        Map map = request.getParameterMap();
+        Iterator<Map.Entry<String, String[]>> it = map.entrySet().iterator();
+        Map.Entry<String, String[]> entry;
+        while(it.hasNext()){
+            entry = it.next();
+            paramMap.put(entry.getKey(), entry.getValue()[0]);
+        }
+        ProcessInstance pi = runtimeService.startProcessInstanceById(id, "businessKey", paramMap);
         // 设置流程实例名称
-        runtimeService.setProcessInstanceName(pi.getId(), "demo");
-        List<Task> tasks = taskService.createTaskQuery().processInstanceId(pi.getId()).list();
-        return "success";
+        runtimeService.setProcessInstanceName(pi.getId(), pi.getName());
+        Task task = taskService.createTaskQuery().processInstanceId(pi.getId()).singleResult();
+        return task.getId() + ":" + task.getProcessInstanceId() + ":" + task.getAssignee();
     }
 
 
@@ -180,7 +155,7 @@ public class ActivitiController {
     @ApiOperation(value = "任务节点审批通过")
     public String pass(@ApiParam("任务id") @RequestParam String id,
                                @ApiParam("流程实例id") @RequestParam String procInstId,
-                               @ApiParam("下个节点审批人") @RequestParam(required = false) String[] assignees,
+                                @RequestParam(name = "assigner", required = true) String assignee,
                                @ApiParam("优先级") @RequestParam(required = false) Integer priority,
                                @ApiParam("意见评论") @RequestParam(required = false) String comment,
                                @ApiParam("是否发送站内消息") @RequestParam(defaultValue = "false") Boolean sendMessage,
@@ -190,46 +165,30 @@ public class ActivitiController {
         if(StringUtils.isBlank(comment)){
             comment = "";
         }
-        taskService.addComment(id, procInstId, comment);
         ProcessInstance pi = runtimeService.createProcessInstanceQuery().processInstanceId(procInstId).singleResult();
         Task task = taskService.createTaskQuery().taskId(id).singleResult();
-        if(StringUtils.isNotBlank(task.getOwner())&&!("RESOLVED").equals(task.getDelegationState().toString())){
-            // 未解决的委托任务 先resolve
-            String oldAssignee = task.getAssignee();
-            taskService.resolveTask(id);
-            taskService.setAssignee(id, oldAssignee);
-        }
-        taskService.complete(id);
-        List<Task> tasks = taskService.createTaskQuery().processInstanceId(procInstId).list();
-        // 判断下一个节点
-        if(tasks!=null&&tasks.size()>0){
-            for(Task t : tasks){
-                if(assignees==null||assignees.length<1){
-
-                }else{
-//                    // 避免重复添加
-//                    List<String> list = iRunIdentityService.selectByConditions(t.getId(), "candidate");
-//                    if(list==null||list.size()==0) {
-//                        for(String assignee : assignees){
-//                            taskService.addCandidateUser(t.getId(), assignee);
-//                            // 异步发消息
-//                            messageUtil.sendActMessage(assignee, ActivitiConstant.MESSAGE_TODO_CONTENT, sendMessage, sendSms, sendEmail);
-//                            taskService.setPriority(t.getId(), priority);
-//                        }
-//                    }
-                }
+        if(null != task) {
+            if (!assignee.equals(task.getAssignee())) {
+                return "无权限";
             }
-        } else {
+            if(StringUtils.isNotBlank(task.getOwner())&&!("RESOLVED").equals(task.getDelegationState().toString())){
+                // 未解决的委托任务 先resolve
+                String oldAssignee = task.getAssignee();
+                taskService.resolveTask(id);
+                taskService.setAssignee(id, oldAssignee);
+            }
         }
-        return "success";
+        taskService.addComment(id, procInstId, comment);
+        taskService.complete(id);
+        task = taskService.createTaskQuery().processInstanceId(pi.getId()).singleResult();
+        if(null == task){
+            return "finish";
+        }
+        return task.getId() + " : " + task.getProcessInstanceId()+ " : " + task.getAssignee();
         // 记录实际审批人员
 //        iHistoryIdentityService.insert(String.valueOf(SnowFlakeUtil.getFlowIdInstance().nextId()),
 //                ActivitiConstant.EXECUTOR_TYPE, securityUtil.getCurrUser().getId(), id, procInstId);
 //        return ResultUtil.success("操作成功");
-    }
-
-    public void test(){
-
     }
 
     @RequestMapping(value = "/getHighlightImg/{id}", method = RequestMethod.GET)
@@ -262,7 +221,8 @@ public class ActivitiController {
             ProcessDiagramGenerator diagramGenerator = processEngineConfiguration.getProcessDiagramGenerator();
             inputStream = diagramGenerator.generateDiagram(bpmnModel, "png", highLightedActivities, highLightedFlows,
                     properties.getActivityFontName(), properties.getLabelFontName(), properties.getLabelFontName(),null, 1.0);
-            picName = pi.getName()+".png";
+            ProcessDefinition pd = repositoryService.createProcessDefinitionQuery().processDefinitionId(pi.getProcessDefinitionId()).singleResult();
+            picName = pd.getDiagramResourceName();
         }
         try {
             response.setContentType("application/octet-stream;charset=UTF-8");
